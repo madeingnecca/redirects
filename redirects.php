@@ -1,8 +1,16 @@
 <?php
 
-function redirects_show_usage() {
+function redirects_show_usage($fatal_error = NULL) {
+  if (isset($fatal_error)) {
+    print "Fatal: $fatal_error";
+    print "\n";
+    print "\n";
+  }
+
   print "Usage: \n";
-  print "cat site_redirects.txt | redirects [--test <base_url>]";
+  print "cat site_redirects.txt | redirects [--generator <generator> --test <base_url>]\n";
+  print "  --test: Test redirects instead of generate them.\n";
+  print "  --generator: Set the generator to use to generate redirects. Choose from the list: " . join(', ', array_keys(redirects_generators())) . "\n";
   print "\n";
 }
 
@@ -164,6 +172,11 @@ function redirects_parse_input_line($line) {
   return $redirect;
 }
 
+function redirects_is_absolute_url($url) {
+  $parsed = parse_url($url);
+  return $parsed !== FALSE && isset($parsed['scheme']) && isset($parsed['host']);
+}
+
 // Call the routine only if we are in the *MAIN* script.
 // Otherwise we are including "redirects" as a library.
 if (count(debug_backtrace()) > 0) {
@@ -175,8 +188,16 @@ ini_set('display_errors', 1);
 // Avoid annoying php warnings saying default tz was not set.
 date_default_timezone_set('UTC');
 
+// This script can only accept redirects from standard input.
+// posix_isatty will return FALSE if STDIN is a pipe (normal case).
+if (function_exists('posix_isatty') && posix_isatty(STDIN)) {
+  redirects_show_usage();
+  exit;
+}
+
 $input = array(
   'redirects' => array(),
+  'cmd' => 'generate',
 );
 
 while (($line = trim(fgets(STDIN)))) {
@@ -187,23 +208,43 @@ while (($line = trim(fgets(STDIN)))) {
   }
 }
 
-$input['cmd'] = 'generate';
+$cli_args = $argv;
 
-if (in_array('--test', $argv)) {
-  $input['cmd'] = 'test';
-  $input['test_options'] = array();
+while ((($arg = array_shift($cli_args)) !== NULL)) {
+  $next_arg = current($cli_args);
 
-  if (isset($argv[2])) {
-    $input['test_options']['base_url'] = $argv[2];
+  switch ($arg) {
+    case '--test':
+      $input['cmd'] = 'test';
+
+      if (redirects_is_absolute_url($next_arg)) {
+        array_shift($args);
+        $input['test_options']['base_url'] = $next_arg;
+      }
+
+      break;
+
+    case '--generator':
+      if ($input['cmd'] != 'generate') {
+        redirects_show_usage('Useless --generator option found.');
+        exit;
+      }
+
+      if (!in_array($next_arg, array_keys(redirects_generators()))) {
+        redirects_show_usage(sprintf('Unknown generator \'%s\'', $next_arg));
+        exit;
+      }
+
+      $input['generate_options']['generator'] = $next_arg;
+      break;
   }
 }
 
 if ($input['cmd'] == 'generate') {
-  redirects_generate($input['redirects']);
+  $input += array('generate_options' => array());
+  redirects_generate($input['redirects'], $input['generate_options']);
 }
 else if ($input['cmd'] == 'test') {
+  $input += array('test_options' => array());
   redirects_test($input['redirects'], $input['test_options']);
-}
-else {
-  redirects_show_usage();
 }
