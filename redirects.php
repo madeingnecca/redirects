@@ -8,9 +8,11 @@ function redirects_show_usage($fatal_error = NULL) {
   }
 
   print "Usage: \n";
-  print "cat site_redirects.txt | redirects [--generator <generator> --test <base_url>]\n";
+  print "cat site_redirects.txt | redirects [--generator=<generator> --test --base_url=<base_url> --separator=<generator>]\n";
   print "  --test: Test redirects instead of generate them.\n";
+  print "  --base_url: \n";
   print "  --generator: Set the generator to use to generate redirects. Choose from the list: " . join(', ', array_keys(redirects_generators())) . "\n";
+  print "  --separator: Set the character used to separate source and destination inside the input lines. Default: \\t.\n";
   print "\n";
 }
 
@@ -39,7 +41,7 @@ function redirects_generate_apache($redirects, $options, &$result) {
     }
 
     $result['output'][] = $indent . sprintf('RewriteCond %%{{REQUEST_URI}} =%s', $redirect['src_parsed']['path']);
-    $result['output'][] = $indent . sprintf('RewriteRule .* %s [R=%s,L]', $redirect['dest'], $redirect['options']['code']);
+    $result['output'][] = $indent . sprintf('RewriteRule .* %s [R=%s,L,QSA]', $redirect['dest'], $redirect['options']['code']);
 
     if ($index < $count - 1) {
       $result['output'][] = '';
@@ -157,8 +159,8 @@ function redirects_test($redirects, $options = array()) {
   print join("\n", $result['output']) . "\n";
 }
 
-function redirects_parse_input_line($line) {
-  $line_parts = array_map('trim', preg_split('/\t/', $line));
+function redirects_parse_input_line($line, $separator) {
+  $line_parts = array_map('trim', preg_split('/' . $separator . '/', $line));
 
   if (count($line_parts) != 2) {
     return FALSE;
@@ -198,28 +200,37 @@ if (function_exists('posix_isatty') && posix_isatty(STDIN)) {
 $input = array(
   'redirects' => array(),
   'cmd' => 'generate',
+  'read_options' => array('separator' => '\t'),
 );
-
-while (($line = trim(fgets(STDIN)))) {
-  $redirect = redirects_parse_input_line($line);
-
-  if ($redirect !== FALSE) {
-    $input['redirects'][] = $redirect;
-  }
-}
 
 $cli_args = $argv;
 
 while ((($arg = array_shift($cli_args)) !== NULL)) {
+  // Long options could be passed in the form --LONG_OPT=VALUE.
+  if (preg_match('/(--[^=]+)=(.+)/', $arg, $matches)) {
+    $arg = $matches[1];
+    array_unshift($cli_args, $matches[2]);
+  }
+
   $next_arg = current($cli_args);
 
   switch ($arg) {
     case '--test':
       $input['cmd'] = 'test';
+      break;
 
-      if (redirects_is_absolute_url($next_arg)) {
+    case '--base_url':
+      if ($input['cmd'] != 'test') {
+        redirects_show_usage('Base url is valid option only for test mode.');
+        exit;
+      }
+      else if (redirects_is_absolute_url($next_arg)) {
         array_shift($args);
         $input['test_options']['base_url'] = $next_arg;
+      }
+      else {
+        redirects_show_usage('Base url is not a valid url.');
+        exit;
       }
 
       break;
@@ -237,6 +248,18 @@ while ((($arg = array_shift($cli_args)) !== NULL)) {
 
       $input['generate_options']['generator'] = $next_arg;
       break;
+
+    case '--separator':
+      $input['read_options']['separator'] = $next_arg;
+      break;
+  }
+}
+
+while (($line = trim(fgets(STDIN)))) {
+  $redirect = redirects_parse_input_line($line, $input['read_options']['separator']);
+
+  if ($redirect !== FALSE) {
+    $input['redirects'][] = $redirect;
   }
 }
 
