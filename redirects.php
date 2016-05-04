@@ -119,27 +119,35 @@ function redirects_test($redirects, $options = array()) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
     curl_setopt($ch, CURLOPT_URL, $src);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-    curl_setopt($ch, CURLOPT_MAXREDIRS, 1);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 0);
 
     $data = curl_exec($ch);
-    $curl_errno = curl_errno($ch);  
+    $curl_errno = curl_errno($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $headers_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    $content_type = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+    curl_close($ch);
+
+    $headers_string = substr($data, 0, $headers_size);
+    $headers = redirects_parse_http_response_headers($headers_string);
+    $data = substr($data, $headers_size);
+    $is_redirect = (in_array($code, array(301, 302, 303, 307)));
 
     switch ($curl_errno) {
       case 0:
-        $last_url = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($is_redirect) {
+          $redirect_url = $headers['location'][0];
 
-        if ($last_url == $dest) {
-          $result['output'][] = sprintf('Yes');
+          if ($redirect_url == $dest) {
+            $result['output'][] = sprintf('Yes');
+          }
+          else {
+            $result['output'][] = sprintf('No, %s goes to %s', $src, $redirect_url);
+            $result['errors_count'] += 1;
+          }
         }
-        else if ($http_code != '200') {
-          $result['output'][] = sprintf('No, %s returns %s', $src, $http_code);
-          $result['errors_count'] += 1;
-        }
-        else {
-          $result['output'][] = sprintf('No, %s goes to %s', $src, $last_url);
+        else if ($code != '200') {
+          $result['output'][] = sprintf('No, %s returns %s', $src, $code);
           $result['errors_count'] += 1;
         }
 
@@ -157,6 +165,30 @@ function redirects_test($redirects, $options = array()) {
   $result['output'][] = sprintf('Errors: %d / %d', $result['errors_count'], $result['total']);
 
   print join("\n", $result['output']) . "\n";
+}
+
+function redirects_parse_http_response_headers($headers_string) {
+  $default_headers = array('location' => array());
+  $headers = $default_headers;
+  $lines = preg_split('/\r\n/', trim($headers_string));
+  $first = array_shift($lines);
+
+  foreach ($lines as $line) {
+    if (preg_match('/^(.*?): (.*)/', $line, $matches)) {
+      $header_name = strtolower($matches[1]);
+      $header_val = $matches[2];
+      if (!isset($headers[$header_name])) {
+        $headers[$header_name] = array();
+      }
+      $headers[$header_name][] = $header_val;
+    }
+  }
+
+  if (!isset($headers['status'])) {
+    $headers['status'] = array($first);
+  }
+
+  return $headers;
 }
 
 function redirects_parse_input_line($line, $separator) {
