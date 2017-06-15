@@ -16,41 +16,6 @@ function redirects_show_usage($fatal_error = NULL) {
   print "\n";
 }
 
-function redirects_generators() {
-  return array(
-    'apache' => array(
-      'generator_function' => 'redirects_generate_apache',
-    ),
-  );
-}
-
-function redirects_generate_apache($redirects, $options, &$result) {
-  $indent = isset($options['indent']) ? $options['indent'] : "\t";
-  $count = count($redirects);
-
-  $result['output'][] = '<IfModule mod_rewrite.c>';
-  $result['output'][] = 'RewriteEngine On';
-
-  foreach ($redirects as $index => $redirect) {
-    if (isset($redirect['src_parsed']['scheme']) && $redirect['src_parsed']['scheme'] == 'https') {
-      $result['output'][] = $indent . 'RewriteCond %%{HTTPS} =on';
-    }
-
-    if (isset($redirect['src_parsed']['host'])) {
-      $result['output'][] = $indent . sprintf('RewriteCond %%{{HTTP_HOST}} =%s', $redirect['src_parsed']['host']);
-    }
-
-    $result['output'][] = $indent . sprintf('RewriteCond %%{{REQUEST_URI}} =%s', $redirect['src_parsed']['path']);
-    $result['output'][] = $indent . sprintf('RewriteRule .* %s [R=%s,L,QSA]', $redirect['dest'], $redirect['options']['code']);
-
-    if ($index < $count - 1) {
-      $result['output'][] = '';
-    }
-  }
-
-  $result['output'][] = '</IfModule>';
-}
-
 function redirects_default_generator() {
   return key(redirects_generators());
 }
@@ -247,6 +212,10 @@ while ((($arg = array_shift($cli_args)) !== NULL)) {
   $next_arg = current($cli_args);
 
   switch ($arg) {
+    case '--help':
+      redirects_show_usage();
+      exit;
+
     case '--test':
       $input['cmd'] = 'test';
       break;
@@ -302,4 +271,111 @@ if ($input['cmd'] == 'generate') {
 else if ($input['cmd'] == 'test') {
   $input += array('test_options' => array());
   redirects_test($input['redirects'], $input['test_options']);
+}
+
+/**
+ * List of generators.
+ */
+function redirects_generators() {
+  return array(
+    'apache' => array(
+      'generator_function' => 'redirects_generate_apache',
+    ),
+    'drupal_redirect_module' => array(
+      'generator_function' => 'redirects_generate_drupal_redirect_module',
+    ),
+  );
+}
+
+/**
+ * Transforms redirects into directives for ModRewrite Apache module.
+ */
+function redirects_generate_apache($redirects, $options, &$result) {
+  $indent = isset($options['indent']) ? $options['indent'] : "\t";
+  $count = count($redirects);
+
+  $result['output'][] = '<IfModule mod_rewrite.c>';
+  $result['output'][] = 'RewriteEngine On';
+
+  foreach ($redirects as $index => $redirect) {
+    if (isset($redirect['src_parsed']['scheme']) && $redirect['src_parsed']['scheme'] == 'https') {
+      $result['output'][] = $indent . 'RewriteCond %%{HTTPS} =on';
+    }
+
+    if (isset($redirect['src_parsed']['host'])) {
+      $result['output'][] = $indent . sprintf('RewriteCond %%{{HTTP_HOST}} =%s', $redirect['src_parsed']['host']);
+    }
+
+    $result['output'][] = $indent . sprintf('RewriteCond %%{{REQUEST_URI}} =%s', $redirect['src_parsed']['path']);
+    $result['output'][] = $indent . sprintf('RewriteRule .* %s [R=%s,L,QSA]', $redirect['dest'], $redirect['options']['code']);
+
+    if ($index < $count - 1) {
+      $result['output'][] = '';
+    }
+  }
+
+  $result['output'][] = '</IfModule>';
+}
+
+/**
+ * Transforms redirects into MYSQL instructions for creating redirect records for Drupal 7 "redirect" module.
+ */
+function redirects_generate_drupal_redirect_module($redirects, $options, &$result) {
+  $db_prefix = isset($options['db_prefix']) ? $options['db_prefix'] : '';
+
+  $drupal_hash_base64 = function($data) {
+    $hash = base64_encode(hash('sha256', $data, TRUE));
+    // Modify the hash so it's safe to use in URLs.
+    return strtr($hash, array('+' => '-', '/' => '_', '=' => ''));
+  };
+
+  $redirect_sort_recursive = function(&$array, $callback = 'sort') {
+    $result = $callback($array);
+    foreach ($array as $key => $value) {
+      if (is_array($value)) {
+        $result &= $redirect_sort_recursive($array[$key], $callback);
+      }
+    }
+    return $result;
+  };
+
+  $wrap_backticks = function($str) {
+    return '`' . $str . '`';
+  };
+  
+  $wrap_single_quote = function($str) {
+    return "'" . $str . "'";
+  };
+
+  foreach ($redirects as $index => $redirect) {
+    $hash = array(
+      'source' => $redirect['src_parsed']['path'],
+      'language' => 'und',
+    );
+
+    if (!empty($redirect['src_parsed']['query'])) {
+      $hash['source_query'] = $redirect['src_parsed']['query'];
+    }
+
+    $redirect_sort_recursive($hash, 'ksort');
+
+    $record = array(
+      'hash' => $drupal_hash_base64(serialize($hash)),
+      'type' => 'redirect',
+      'uid' => 1,
+      'source' => rtrim(ltrim($redirect['src_parsed']['path'], '/'), '/'),
+      'source_options' => serialize(array()),
+      'redirect' => rtrim(ltrim($redirect['dest'], '/'), '/'),
+      'redirect_options' => serialize(array()),
+      'language' => 'und',
+      'status_code' => '301',
+      'count' => 0,
+      'status' => 1,
+    );
+
+    $query_cols = join(',', array_map($wrap_backticks, array_keys($record)));
+    @$query_values = join(',', array_map($wrap_single_quote, array_map('mysql_escape_string', array_values($record))));
+
+    $result['output'][] = 'INSERT INTO `' . $db_prefix . 'redirect` (' . $query_cols . ') VALUES (' . $query_values . ');';
+  }
 }
