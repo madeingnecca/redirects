@@ -8,7 +8,7 @@ function redirects_show_usage($fatal_error = NULL) {
   }
 
   print "Usage: \n";
-  print "cat site_redirects.txt | redirects [--generator=<generator> --test --base_url=<base_url> --separator=<generator>]\n";
+  print "cat site_redirects.txt | redirects [--generator=<generator> --test --base_url=<base_url> --separator=<separator>]\n";
   print "  --test: Test redirects instead of generate them.\n";
   print "  --base_url: \n";
   print "  --generator: Set the generator to use to generate redirects. Choose from the list: " . join(', ', array_keys(redirects_generators())) . "\n";
@@ -226,7 +226,7 @@ while ((($arg = array_shift($cli_args)) !== NULL)) {
         exit;
       }
       else if (redirects_is_absolute_url($next_arg)) {
-        array_shift($args);
+        array_shift($cli_args);
         $input['test_options']['base_url'] = $next_arg;
       }
       else {
