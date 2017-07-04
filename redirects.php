@@ -294,8 +294,10 @@ function redirects_generate_apache($redirects, $options, &$result) {
   $indent = isset($options['indent']) ? $options['indent'] : "\t";
   $count = count($redirects);
 
+  $result['output'][] = '# Redirects generated with https://github.com/madeingnecca/redirects';
   $result['output'][] = '<IfModule mod_rewrite.c>';
-  $result['output'][] = 'RewriteEngine On';
+  $result['output'][] = $indent . 'RewriteEngine On';
+  $result['output'][] = '';
 
   foreach ($redirects as $index => $redirect) {
     if (isset($redirect['src_parsed']['scheme']) && $redirect['src_parsed']['scheme'] == 'https') {
@@ -303,11 +305,19 @@ function redirects_generate_apache($redirects, $options, &$result) {
     }
 
     if (isset($redirect['src_parsed']['host'])) {
-      $result['output'][] = $indent . sprintf('RewriteCond %%{{HTTP_HOST}} =%s', $redirect['src_parsed']['host']);
+      $result['output'][] = $indent . sprintf('RewriteCond %%{HTTP_HOST} =%s', $redirect['src_parsed']['host']);
     }
 
-    $result['output'][] = $indent . sprintf('RewriteCond %%{{REQUEST_URI}} =%s', $redirect['src_parsed']['path']);
-    $result['output'][] = $indent . sprintf('RewriteRule .* %s [R=%s,L,QSA]', $redirect['dest'], $redirect['options']['code']);
+    $result['output'][] = $indent . sprintf('RewriteCond %%{REQUEST_URI} =%s', $redirect['src_parsed']['path']);
+
+    if (isset($redirect['src_parsed']['query']) && !empty($redirect['src_parsed']['query'])) {
+      $result['output'][] = $indent . sprintf('RewriteCond %%{QUERY_STRING} =%s', $redirect['src_parsed']['query']);
+    }
+    else {
+      $result['output'][] = $indent . sprintf('RewriteCond %%{QUERY_STRING} ^$');
+    }
+
+    $result['output'][] = $indent . sprintf('RewriteRule .* %s [R=%s,L,QSD,NE]', $redirect['dest'], $redirect['options']['code']);
 
     if ($index < $count - 1) {
       $result['output'][] = '';
