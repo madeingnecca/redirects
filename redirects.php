@@ -278,8 +278,8 @@ else if ($input['cmd'] == 'test') {
  */
 function redirects_generators() {
   return array(
-    'apache' => array(
-      'generator_function' => 'redirects_generate_apache',
+    'apache_modrewrite' => array(
+      'generator_function' => 'redirects_generate_apache_modrewrite',
     ),
     'drupal_redirect_module' => array(
       'generator_function' => 'redirects_generate_drupal_redirect_module',
@@ -290,7 +290,7 @@ function redirects_generators() {
 /**
  * Transforms redirects into directives for ModRewrite Apache module.
  */
-function redirects_generate_apache($redirects, $options, &$result) {
+function redirects_generate_apache_modrewrite($redirects, $options, &$result) {
   $indent = isset($options['indent']) ? $options['indent'] : "\t";
   $count = count($redirects);
 
