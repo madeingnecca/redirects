@@ -9,10 +9,10 @@ function redirects_show_usage($fatal_error = NULL) {
 
   print "Usage: \n";
   print "cat site_redirects.txt | redirects [--generator=<generator> --test --base_url=<base_url> --separator=<separator>]\n";
-  print "  --test: Test redirects instead of generate them.\n";
-  print "  --base_url: \n";
-  print "  --generator: Set the generator to use to generate redirects. Choose from the list: " . join(', ', array_keys(redirects_generators())) . "\n";
-  print "  --separator: Set the character used to separate source and destination inside the input lines. Default: \\t.\n";
+  print "  --generator: Set the generator to use when generating redirects. Choose one from the list: " . join(', ', array_keys(redirects_generators())) . "\n";
+  print "  --separator: Set the character used to separate \"source\" and \"destination\" inside the input lines. Default: \\t.\n";
+  print "  --test: Test redirects instead of generating them.\n";
+  print "  --base_url (only in test mode): Set the base url to use when the \"source\" part is a path-relative url.\n";
   print "\n";
 }
 
@@ -288,7 +288,7 @@ function redirects_generators() {
 }
 
 /**
- * Transforms redirects into directives for ModRewrite Apache module.
+ * Transforms redirects into directives for Apache's ModRewrite module (https://httpd.apache.org/docs/2.4/mod/mod_rewrite.html).
  */
 function redirects_generate_apache_modrewrite($redirects, $options, &$result) {
   $indent = isset($options['indent']) ? $options['indent'] : "\t";
@@ -328,7 +328,7 @@ function redirects_generate_apache_modrewrite($redirects, $options, &$result) {
 }
 
 /**
- * Transforms redirects into MYSQL instructions for creating redirect records for Drupal 7 "redirect" module.
+ * Transforms redirects into MYSQL instructions for creating db records used by Drupal 7 "redirect" module (https://www.drupal.org/project/redirect).
  */
 function redirects_generate_drupal_redirect_module($redirects, $options, &$result) {
   $db_prefix = isset($options['db_prefix']) ? $options['db_prefix'] : '';
