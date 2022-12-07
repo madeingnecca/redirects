@@ -1,4 +1,4 @@
-redirects.php
-=============
+How to use
+==========
 
-Simple script to generate and test redirects.
+`php redirects.php --usage` 

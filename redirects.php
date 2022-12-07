@@ -281,6 +281,9 @@ function redirects_generators() {
     'apache_modrewrite' => array(
       'generator_function' => 'redirects_generate_apache_modrewrite',
     ),
+    'apache_modalias' => array(
+      'generator_function' => 'redirects_generate_apache_modalias',
+    ),
     'drupal_redirect_module' => array(
       'generator_function' => 'redirects_generate_drupal_redirect_module',
     ),
@@ -318,6 +321,27 @@ function redirects_generate_apache_modrewrite($redirects, $options, &$result) {
     }
 
     $result['output'][] = $indent . sprintf('RewriteRule .* %s [R=%s,L,QSD,NE]', $redirect['dest'], $redirect['options']['code']);
+
+    if ($index < $count - 1) {
+      $result['output'][] = '';
+    }
+  }
+
+  $result['output'][] = '</IfModule>';
+}
+
+/**
+ * Transforms redirects into directives for Apache's ModAlias module (https://httpd.apache.org/docs/2.4/mod/mod_alias.html).
+ */
+function redirects_generate_apache_modalias($redirects, $options, &$result) {
+  $indent = isset($options['indent']) ? $options['indent'] : "\t";
+  $count = count($redirects);
+
+  $result['output'][] = '# Redirects generated with https://github.com/madeingnecca/redirects';
+  $result['output'][] = '<IfModule mod_alias.c>';
+
+  foreach ($redirects as $index => $redirect) {
+    $result['output'][] = $indent . sprintf('RedirectMatch %s %s %s', $redirect['options']['code'], '^' . preg_quote($redirect['src_parsed']['path']) . '$', $redirect['dest']);
 
     if ($index < $count - 1) {
       $result['output'][] = '';
